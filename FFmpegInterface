@@ -1,0 +1,112 @@
+Let's take a look at Makefile. As you can see from Makefile, I encapsulated the FFmepg-based interface and compiled the dynamic and static libraries.
+For the download and installation of FFmpeg official library, you can refer to my Chinese blog:https://blog.csdn.net/qq_41915225/article/details/88877250
+
+Of course, you can also open this link:http://ffmpeg.org/download.html#releases and then download the relevant libraries.Then type the following commands in turn
+tar -jxvf ***.tar.bz2
+##Compile dynamic libraries, not static libraries, not to mention the compilation configuration of documents:
+./configure --prefix=buildout --enable-shared --disable-static --disable-doc 
+##Increase compilation configuration supported by x264
+./configure --prefix=buildout --enable-shared --disable-static --disable-doc  --enable-gpl --enable-libx264
+##Now you can use makefile
+make -j ##If the compilation is slow, you can add the - J parameter.
+make install
+##Find the path and copy the header files and libraries to. / FFmpeg directory.
+##或者修改Makefile里面的FILE这个参数
+Or modify the FILE parameter in Makefile
+
+
+FILE = ../FFmpegLib
+FFMPEGINCLUDE = $(FILE)/include/
+FFMPEGLIB = $(FILE)/lib/
+PTHREAD = -lpthread
+CC = gcc -std=gnu99 -Wall -g
+CPP = g++ -std=c++11 -Wall -g
+FFMPEGLINK = -lavformat -lavfilter -lavcodec -lswscale -lavutil -lswresample
+
+INCLUDE = ./include 
+LIB = ./lib
+
+DYN = g++ -fPIC -shared
+STA = g++ -static ## ar -r
+LINK = RtspStream.o
+CPPLINK = RtspStream.cpp
+HLINK = RtspStream.h
+ALL = libRtspStream.so libRtspStream.a testFFmpeg
+
+all:$(ALL)
+
+libRtspStream.so:$(CPPLINK)
+	$(DYN) -o $@ $^
+libRtspStream.a:$(LINK)
+	ar -r $@ $^
+testFFmpeg:$(LINK)
+	$(CPP) -o $@ testFFmpeg.cpp $^ -I $(FFMPEGINCLUDE) \
+							-L $(FFMPEGLIB) $(FFMPEGLINK) \
+							$(PTHREAD) ## -D MAKESTREAMFILE
+$(LINK):$(CPPLINK)
+	$(CPP) -c $^
+
+clean:
+	rm -rf $(ALL) *.o tags
+
+install:
+	cp *.h $(INCLUDE)
+	cp *.so *.a $(LIB) -r 
+
+setEnvir:
+	export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(FFMPEGLIB)
+setTags:
+	ctags -R
+	chmod 0666 tags
+
+
+
+这个是对外提供的头文件
+#ifndef _RTSP_STREAM_H__
+#define _RTSP_STREAM_H__
+extern "C"
+{
+	#include "libavformat/avformat.h"
+	#include "libswscale/swscale.h"
+	#include "libavcodec/avcodec.h"
+	#include "libavfilter/avfilter.h"
+	#include "libavutil/time.h"
+}
+#include <iostream>
+#include <string>
+#include <cstdlib>
+#include <pthread.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#define LOG() \
+	int file = open("runlog.log",O_APPEND|O_CREAT|O_WRONLY,0644);\
+	char msg[1024] = {0};\
+	sprintf(msg,"[DEBUG] %s %s %d\r\n",__FILE__,__func__,__LINE__);\
+	write(file,msg,strlen(msg));\
+	close(file);\
+
+class MyObs
+{
+	public:
+		virtual void OnVideoData(const unsigned char* data, int len) = 0;
+		virtual void OnAudioData(const unsigned char* data, int len) = 0;
+};
+/*define MAKESTREAMFILE can creat file about the video or audio file*/
+//#define MAKESTREAMFILE
+class Realization;
+class RtspStream
+{
+public:
+	RtspStream(){}
+	RtspStream(const char*,MyObs*);
+	virtual ~RtspStream();
+	bool UpdataUrl(const char*);
+	void startRecvStream();
+	void stopRecvStream();
+private:
+	Realization *p_realization;
+};
+#endif
+
